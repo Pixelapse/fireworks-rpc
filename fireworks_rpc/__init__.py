@@ -1,8 +1,13 @@
+import os.path
 import socket
 
 from cStringIO import StringIO
 from lxml import etree
 from xml.etree.ElementTree import Element, SubElement, tostring
+
+from fireworks_rpc.fireworks import restart_fireworks
+
+debug = False
 
 FIREWORKS_PORT=12124
 
@@ -15,7 +20,16 @@ class FireworksException(Exception):
 class FireworksConn(object):
   def __init__(self, host='localhost', port=FIREWORKS_PORT):
     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    self.socket.connect((host, port))
+    
+    # Not sure what to do here to ensure a secure connection..
+    while True:
+      try:
+        self.socket.connect((host, port))
+        break
+      except:
+        # Try to restart fireworks
+        restart_fireworks()
+        # Sleep??
     
     # Connection specific objects
     self.fw = FireworksObj(self, 'fw')
@@ -25,6 +39,12 @@ class FireworksConn(object):
     
     # Deprecated
     self.document = FireworksObj(self, 'Document')
+  
+  def __enter__(self):
+    return self
+  
+  def __exit__(self, type, value, traceback):
+    self.socket.close()
   
   def send(self, xml):
     self.socket.send(xml + '\0')
@@ -42,10 +62,15 @@ class FireworksConn(object):
     if isinstance(xml, Element):
       xml = tostring(xml, 'UTF-8', 'html')
   
-    print xml
+    if debug:
+      print 'Request: ' + xml
+    
     self.send(xml)
     return_string = self.recv_null()
-    print return_string
+    
+    if debug:
+      print 'Return: ' + return_string + '\n'
+    
     return_elem = etree.fromstring(return_string)
     
     if return_elem is not None and len(return_elem) > 0:
